@@ -1,13 +1,15 @@
 ﻿import os
 import io
 import json
+import logging
 import re
 import traceback
 import streamlit as st
 
+logging.basicConfig(level=logging.INFO)
+
 from ai_client import DEFAULT_MODEL, AIClientError, chat_completion
 from data_loader import build_context, load_file
-
 
 SYSTEM_PROMPT = """
 You are an AI document analyst.
@@ -94,11 +96,12 @@ MODEL1_OPTIONS = [
     "meta/llama-3.2-11b-vision-instruct",
     "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
     "nvidia/nemotron-ocr-v1",
+    "abacusai/dracarys-llama-3.1-70b-instruct",
     DEFAULT_MODEL,
     "meta/llama-3.3-70b-instruct",
     "meta/llama-3.1-70b-instruct",
     "meta/llama-3.1-8b-instruct",
-    "abacusai/dracarys-llama-3.1-70b-instruct",
+    "nvidia/nemotron-ocr-v1",
 ]
 
 MODEL2_OPTIONS = [
@@ -952,12 +955,22 @@ then generate the requested output structure.
 
                 answer=str(e)
                 st.error(answer)
+                if "timed out" in answer.lower():
+                    st.info("This usually clears up on its own — try sending the question again.")
 
 
             except Exception:
 
-                answer=traceback.format_exc()
+                full_trace = traceback.format_exc()
+                logging.exception("Unhandled error while generating answer")
+                answer = (
+                    "Something went wrong while generating a response. "
+                    "Please try again; if it keeps happening, try a shorter question "
+                    "or a smaller document."
+                )
                 st.error(answer)
+                with st.expander("Technical details"):
+                    st.code(full_trace)
 
 
 
