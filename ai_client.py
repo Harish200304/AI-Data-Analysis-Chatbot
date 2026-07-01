@@ -6,17 +6,14 @@ import socket
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 
 
 DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-# A general instruct model responds in a few seconds normally; keep enough
-# headroom for longer document-generation prompts without masking real hangs.
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_RETRIES = 3
 
-# Any of these mean "the network/socket hiccuped", not "the request is bad".
-# They're all safe to retry.
 RETRYABLE_EXCEPTIONS = (
     TimeoutError,
     socket.timeout,
@@ -30,6 +27,39 @@ logger = logging.getLogger(__name__)
 
 class AIClientError(RuntimeError):
     pass
+
+
+def _diagnose_host(url):
+    """Best-effort low-level connectivity check, used only to enrich error messages."""
+    try:
+        host = urlparse(url).hostname
+    except Exception:
+        return "could not parse target host from URL"
+    if not host:
+        return "could not parse target host from URL"
+    try:
+        start = time.monotonic()
+        socket.getaddrinfo(host, 443)
+        dns_time = time.monotonic() - start
+    except Exception as exc:
+        return f"DNS lookup for {host} failed: {exc}. Outbound DNS may be blocked from this host."
+    try:
+        start = time.monotonic()
+        with socket.create_connection((host, 443), timeout=8):
+            connect_time = time.monotonic() - start
+        return (
+            f"DNS resolved {host} in {dns_time:.2f}s and a raw TCP connection to port 443 "
+            f"succeeded in {connect_time:.2f}s, so the host is reachable. The API/proxy in "
+            f"between is accepting the connection but not sending a response within the "
+            f"timeout — this points at an egress proxy, firewall, or rate limiter silently "
+            f"dropping the request, not a slow model."
+        )
+    except Exception as exc:
+        return (
+            f"DNS resolved {host} in {dns_time:.2f}s but a raw TCP connection to port 443 "
+            f"failed: {exc}. Outbound network access to {host} appears to be blocked from "
+            f"this deployment environment — check your platform's egress/firewall settings."
+        )
 
 
 def chat_completion(messages, api_key=None, model=DEFAULT_MODEL, temperature=0.2, max_tokens=900, timeout=DEFAULT_TIMEOUT_SECONDS, retries=MAX_RETRIES):
@@ -80,10 +110,10 @@ def chat_completion(messages, api_key=None, model=DEFAULT_MODEL, temperature=0.2
                 time.sleep(min(2 ** attempt, 10))
                 continue
             if isinstance(reason, (TimeoutError, socket.timeout)):
+                diagnosis = _diagnose_host(url)
                 raise AIClientError(
                     "NVIDIA API request timed out after several attempts. "
-                    "The request may be too large, or the service may be under load. "
-                    "Try again, or shorten the document/question."
+                    f"Diagnosis: {diagnosis}"
                 ) from exc
             raise AIClientError(f"Could not reach NVIDIA API: {reason}") from exc
         except RETRYABLE_EXCEPTIONS as exc:
@@ -92,10 +122,10 @@ def chat_completion(messages, api_key=None, model=DEFAULT_MODEL, temperature=0.2
                 logger.warning("NVIDIA API error on attempt %s/%s: %s", attempt, retries, exc)
                 time.sleep(min(2 ** attempt, 10))
                 continue
+            diagnosis = _diagnose_host(url)
             raise AIClientError(
                 "NVIDIA API request timed out after several attempts. "
-                "The request may be too large, or the service may be under load. "
-                "Try again, or shorten the document/question."
+                f"Diagnosis: {diagnosis}"
             ) from exc
 
     if data is None:
