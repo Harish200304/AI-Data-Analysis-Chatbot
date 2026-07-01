@@ -92,29 +92,27 @@ Rules:
 """
 
 
-
-# Vision-capable models that accept image_url content via the standard
-# /v1/chat/completions endpoint. NOTE: nvidia/nemotron-ocr-v1 is deliberately
-# excluded — it's a specialized NeMo Retriever OCR microservice with its own
-# detector/recognizer API, not a chat-completions model, and calling it
-# through chat_completion() will hang or fail rather than return text.
 MODEL1_OPTIONS = [
     "meta/llama-3.2-11b-vision-instruct",
-    "meta/llama-3.2-90b-vision-instruct",
     "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+    "nvidia/nemotron-ocr-v1",
+    "abacusai/dracarys-llama-3.1-70b-instruct",
+    DEFAULT_MODEL,
+    "meta/llama-3.3-70b-instruct",
+    "meta/llama-3.1-70b-instruct",
+    "meta/llama-3.1-8b-instruct",
+    "nvidia/nemotron-ocr-v1",
 ]
 
-# General-purpose text/instruct models for document generation (forms,
-# policies, presentations). meta/llama-3.1-8b-instruct is the default: it's
-# fast (responses in a few seconds) and is the model this app's NVIDIA key
-# is provisioned for — see README.md.
 MODEL2_OPTIONS = [
     DEFAULT_MODEL,
-    "meta/llama-3.1-70b-instruct",
     "meta/llama-3.3-70b-instruct",
+    "meta/llama-3.1-70b-instruct",
+    "meta/llama-3.1-8b-instruct",
     "abacusai/dracarys-llama-3.1-70b-instruct",
+    "meta/llama-3.2-11b-vision-instruct",
+    "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
 ]
-
 
 
 def is_document_generation_request(question):
@@ -660,7 +658,8 @@ st.write("Upload your data (CSV, Excel, PDF or any file)")
 
 
 uploaded_files = st.file_uploader(
-    "",
+    "Upload your data files",
+    label_visibility="collapsed",
     accept_multiple_files=True,
     type=[
         "csv",
