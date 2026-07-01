@@ -9,7 +9,7 @@ import urllib.request
 from urllib.parse import urlparse
 
 
-DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+DEFAULT_MODEL = "meta/llama-3.1-8b-instruct"
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_RETRIES = 3
@@ -93,6 +93,15 @@ def chat_completion(messages, api_key=None, model=DEFAULT_MODEL, temperature=0.2
             break
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code in (401, 403):
+                raise AIClientError(
+                    f"NVIDIA API rejected the request (HTTP {exc.code}): {detail}. "
+                    f"This usually means the API key is invalid/expired, or the key does "
+                    f"not have access to the model '{model}'. NVIDIA API keys are often "
+                    f"scoped to specific models — try switching back to the model this key "
+                    f"was issued for, or check https://build.nvidia.com for which models "
+                    f"your key can access."
+                ) from exc
             # 429 (rate limited) and 5xx are worth retrying; other 4xx are not.
             if exc.code == 429 or exc.code >= 500:
                 last_error = AIClientError(f"NVIDIA API returned HTTP {exc.code}: {detail}")
